@@ -1,0 +1,21 @@
+{
+  "manifest_version": 2,
+  "name": "Geoguessr Cheat",
+  "version": "0.6",
+  "permissions": ["webRequest", "tabs", "<all_urls>"],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.geoguessr.com/*"],
+      "js": ["main.js"]
+    }
+  ],
+  "icons": {
+    "16": "icons/geo16.png",
+    "48": "icons/geo48.png",
+    "128": "icons/geo128.png"
+  },
+  "browser_action": {}
+}
