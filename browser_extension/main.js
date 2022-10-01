@@ -1,9 +1,10 @@
+'use strict'
 const localUrl = 'http://localhost:5000/req?u=',
   googleMaps = 'https://google.com/maps/place/'
 
 var lastUrls = []
 
-let getLocationObject = async (u) => {
+const getLocationObject = async (u) => {
   const response = await fetch(localUrl + u)
   const data = await response.json()
   return data
@@ -30,6 +31,32 @@ const guess = (openMap) => {
   }
 }
 
+const pin5k = () => {
+  if (lastUrls.length > 0) {
+    getLocationObject(lastUrls.pop()).then((r) => {
+      if (r) {
+        if (document.querySelector('#method_provider')) {
+          document.getElementById('method_provider').remove()
+        }
+        const t = Date.now()
+        // create new element
+        let s = document.createElement('script')
+        s.id = 'method_provider'
+        s.innerHTML = `const check${t} = () => {
+  let mapObj = document.getElementsByClassName('guess-map__canvas-container')[0] 
+  if (!mapObj) return
+  mapObj[Object.keys(mapObj).find((key) => key.startsWith('__reactFiber$'))].return.memoizedProps.onMarkerLocationChanged({lat:${r.lat},lng:${r.lon}})
+}
+check${t}()
+document.getElementById("method_provider").remove()
+`
+        document.body.appendChild(s)
+        lastUrls = []
+      }
+    })
+  }
+}
+
 const isBannedAlready = () => {
   let s = document.getElementById('__NEXT_DATA__')?.innerHTML
   if (!s) return false
@@ -41,13 +68,16 @@ if (isBannedAlready()) {
   console.log('account banned:', isBannedAlready())
 }
 
-let execute = (e) => {
+const execute = (e) => {
   switch (e.keyCode) {
     case 67:
       guess(false)
       break
     case 88:
       guess(true)
+      break
+    case 90:
+      pin5k()
       break
   }
 }
