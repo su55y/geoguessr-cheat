@@ -39,9 +39,7 @@ func main() {
 	logger.Println("Server is starting...")
 
 	router := http.NewServeMux()
-	router.Handle("/", index())
 	router.Handle("/req", geoReq(logger))
-	router.Handle("/healthz", healthz())
 
 	nextRequestID := func() string {
 		return fmt.Sprintf("%d", time.Now().UnixNano())
@@ -85,12 +83,6 @@ func main() {
 	logger.Println("Server stopped")
 }
 
-func index() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-	})
-}
-
 func geoReq(logger *log.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -105,16 +97,6 @@ func geoReq(logger *log.Logger) http.Handler {
 	})
 }
 
-func healthz() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if atomic.LoadInt32(&healthy) == 1 {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
-	})
-}
-
 func logging(logger *log.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -124,10 +106,9 @@ func logging(logger *log.Logger) func(http.Handler) http.Handler {
 					requestID = "unknown"
 				}
 				logger.Printf(
-					"request id:%s, url:%s, ua:%s\n",
+					"request id:%s, url:%s\n",
 					requestID,
-					r.URL.Path,
-					r.UserAgent(),
+					r.URL.String(),
 				)
 			}()
 			next.ServeHTTP(w, r)

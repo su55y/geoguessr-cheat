@@ -41,14 +41,14 @@ const pin5k = () => {
         const t = Date.now()
         // create new element
         let s = document.createElement('script')
-        s.id = 'method_provider'
+        s.id = `method_provider${t}`
         s.innerHTML = `const check${t} = () => {
   let mapObj = document.getElementsByClassName('guess-map__canvas-container')[0] 
   if (!mapObj) return
   mapObj[Object.keys(mapObj).find((key) => key.startsWith('__reactFiber$'))].return.memoizedProps.onMarkerLocationChanged({lat:${r.lat},lng:${r.lon}})
 }
 check${t}()
-document.getElementById("method_provider").remove()
+document.getElementById("method_provider${t}")?.remove()
 `
         document.body.appendChild(s)
         lastUrls = []

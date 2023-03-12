@@ -13,6 +13,7 @@ type Address struct {
 	StateDist    string `json:"state_district,omitempty"`
 	State        string `json:"state,omitempty"`
 	Country      string `json:"country"`
+	Code         string `json:"country_code"`
 }
 
 type Location struct {
