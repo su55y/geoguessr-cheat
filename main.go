@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"regexp"
 	"sync/atomic"
 	"time"
 
@@ -22,20 +21,23 @@ const (
 )
 
 var (
-	healthy   int32
-	port      string
-	geoMetaRX = regexp.MustCompile(
-		"^\\S+req\\?u=(https:\\/\\/maps\\.googleapis\\.com\\/maps\\/api\\/js\\/GeoPhotoService\\.GetMetadata\\S+&callback=\\S+)$",
-	)
+	healthy     int32
+	port        string
+	logFilePath string
 )
 
 func init() {
 	flag.StringVar(&port, "p", "5000", "port")
+	flag.StringVar(&logFilePath, "l", "geoguessr-cheat.log", "log file")
 	flag.Parse()
 }
 
 func main() {
-	logger := log.New(os.Stdout, "http: ", log.LstdFlags)
+	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		log.Fatal(err)
+	}
+	logger := log.New(logFile, "", log.LstdFlags)
 	logger.Println("Server is starting...")
 
 	router := http.NewServeMux()
@@ -73,7 +75,7 @@ func main() {
 		close(done)
 	}()
 
-	logger.Printf("Server is ready to handle requests at :%s", port)
+	logger.Printf("Server is ready to handle requests at :%s\n", port)
 	atomic.StoreInt32(&healthy, 1)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("Could not listen on %s: %v\n", port, err)
@@ -87,12 +89,9 @@ func geoReq(logger *log.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
-		if geoMetaRX.MatchString(r.URL.String()) {
-			if u := geoMetaRX.FindStringSubmatch(r.URL.String()); u != nil && len(u) == 2 {
-				if err := location.ProceedUrl(u[1], &w, logger); err != nil {
-					logger.Printf("error while proceeding: %v", err.Error())
-				}
-			}
+		if err := location.WriteLocation(r.URL.String(), &w); err != nil {
+			logger.Println(err)
+			w.WriteHeader(400)
 		}
 	})
 }
@@ -105,11 +104,7 @@ func logging(logger *log.Logger) func(http.Handler) http.Handler {
 				if !ok {
 					requestID = "unknown"
 				}
-				logger.Printf(
-					"request id:%s, url:%s\n",
-					requestID,
-					r.URL.String(),
-				)
+				logger.Printf("%s %s\n", requestID, r.URL.Path)
 			}()
 			next.ServeHTTP(w, r)
 		})
