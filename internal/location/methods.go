@@ -2,10 +2,9 @@ package location
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"log"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 )
@@ -15,83 +14,108 @@ const (
 )
 
 var (
-	rCoords = regexp.MustCompile("\\[null,null,([\\d\\.\\-]+),([\\d\\.\\-]+)\\],")
+	rxCoords  = regexp.MustCompile("\\[null,null,([\\d\\.\\-]+),([\\d\\.\\-]+)\\],")
+	geoMetaRX = regexp.MustCompile(
+		"^\\S+req\\?u=(https:\\/\\/maps\\.googleapis\\.com\\/maps\\/api\\/js\\/GeoPhotoService\\.GetMetadata\\S+&callback=\\S+)$",
+	)
+	errInvalidBody = func(s string) error { return fmt.Errorf("invalid geoMetaBody format: %+s", s) }
 )
 
-func ProceedUrl(u string, w *http.ResponseWriter, l *log.Logger) error {
-	if r, ok := getGeoMeta(u, l); ok {
-		if coords, ok := parseCoords(r, l); ok {
-			if loc, ok := getLocation(coords, l); ok {
-				return json.NewEncoder(*w).Encode(loc)
-			}
-
-			l.Println("can't get location from open street maps")
-			return errors.New("open street maps request failed")
-		}
-
-		l.Println("can't parse coords")
-		return errors.New("parse coords error")
+func WriteLocation(requestUrl string, w *http.ResponseWriter) error {
+	metaUrl, parseErr := parseUrl(requestUrl)
+	if parseErr != nil {
+		return parseErr
 	}
 
-	l.Println("can't get geo meta")
-	return errors.New("geo meta request failed")
+	geoMetaBody, err := fetchGeoMetaBody(metaUrl)
+	if err != nil {
+		return err
+	}
+
+	coords := parseGeoMetaBody(geoMetaBody)
+	if coords == nil {
+		return errInvalidBody(geoMetaBody)
+	}
+
+	loc, err := getLocation(*coords)
+	if err != nil {
+		return err
+	}
+
+	return json.NewEncoder(*w).Encode(loc)
 }
 
-func getLocation(c Coords, l *log.Logger) (Location, bool) {
-	resp, err := http.Get(fmt.Sprintf(locUrl, c.Lat, c.Lng))
+func getLocation(c Coords) (*Location, error) {
+	u := fmt.Sprintf(locUrl, c.Lat, c.Lng)
+	resp, err := http.Get(u)
 	if err != nil {
-		log.Printf("location request error: %v\n", err.Error())
-		return Location{}, false
+		return nil, err
 	}
-
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusOK {
-		var loc Location
-		err := json.NewDecoder(resp.Body).Decode(&loc)
-		if err != nil {
-			log.Printf("location response decoding error: %v", err.Error())
-			return Location{}, false
-		}
-
-		return loc, true
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s %s", resp.Status, u)
 	}
-	log.Println("location request failed")
-	return Location{}, false
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var loc Location
+	if err := json.Unmarshal(body, &loc); err != nil {
+		return nil, err
+	}
+
+	return &loc, nil
 }
 
-func parseCoords(s string, l *log.Logger) (Coords, bool) {
-	if len(s) > 0 {
-		if rCoords.MatchString(s) {
-			if r := rCoords.FindAllStringSubmatch(s, -1); r != nil && len(r) > 0 {
-				for _, v := range r {
-					if len(v) == 3 {
-						return Coords{Lat: v[1], Lng: v[2]}, true
-					}
-				}
-			}
+func parseGeoMetaBody(body string) *Coords {
+	if !rxCoords.MatchString(body) {
+		return nil
+	}
+
+	matches := rxCoords.FindAllStringSubmatch(body, -1)
+	if matches == nil || len(matches) == 0 {
+		return nil
+	}
+
+	for _, group := range matches {
+		if len(group) == 3 {
+			return &Coords{Lat: group[1], Lng: group[2]}
 		}
 	}
-	return Coords{}, false
+
+	return nil
 }
 
-func getGeoMeta(url string, l *log.Logger) (string, bool) {
+func fetchGeoMetaBody(url string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		log.Printf("request error: %v\n", err.Error())
-		return "", false
+		return "", err
 	}
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusOK {
-		if bodyBytes, err := io.ReadAll(resp.Body); err == nil {
-			return string(bodyBytes), true
-		} else {
-			log.Printf("request read error: %v\n", err.Error())
-		}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("%s %s", resp.Status, url)
 	}
-	log.Println("request failed")
 
-	return "", false
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
+func parseUrl(reqUrl string) (string, error) {
+	if !geoMetaRX.MatchString(reqUrl) {
+		return "", fmt.Errorf("invalid url %s", reqUrl)
+	}
+	matches := geoMetaRX.FindStringSubmatch(reqUrl)
+	if matches == nil || len(matches) != 2 {
+		return "", fmt.Errorf("cannot parse url %s", reqUrl)
+	}
+	return matches[1], nil
 }
