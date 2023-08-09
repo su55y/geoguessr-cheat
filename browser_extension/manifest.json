@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Geoguessr Cheat",
-  "version": "0.6",
+  "version": "0.7",
   "permissions": ["webRequest", "tabs", "<all_urls>"],
   "background": {
     "scripts": ["background.js"]

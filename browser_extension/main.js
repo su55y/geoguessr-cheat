@@ -2,31 +2,45 @@
 const localUrl = 'http://localhost:5000/req?u=',
   googleMaps = 'https://google.com/maps/place/'
 
+const KeyBinds = {
+  JustPrintToConsole: 67, // c
+  PrintAndOpenInGoogleMaps: 88, // x
+  PrintAndPinPoint: 90, // z
+}
+
 var lastUrls = []
 
 const getLocationObject = async (u) => {
-  const response = await fetch(localUrl + u)
-  const data = await response.json()
-  return data
+  return await fetch(localUrl + u)
+    .then((r) => {
+      console.log(`${r.status} ${r.statusText} ${r.url}`)
+      if (!r.ok) return false
+      return r.json()
+    })
+    .catch((e) => {
+      console.error(e)
+      return false
+    })
 }
 
-const printObject = (o) => {
-  for (const k of Object.keys(o)) {
-    console.log(k, '->', o[k])
-    if (k === 'address') printObject(o[k])
+const printLocation = (locationObject) => {
+  for (const key of Object.keys(locationObject)) {
+    console.log(key, '->', locationObject[key])
+    if (key === 'address') printLocation(locationObject[key])
   }
 }
 
-const guess = (openMap) => {
+const openGoogleMaps = ({ lat, lon }) => {
+  window.open(`${googleMaps}${lat},${lon}`, '_blank').focus()
+}
+
+const guess = (openMap = false) => {
   if (lastUrls.length > 0) {
     getLocationObject(lastUrls.pop()).then((r) => {
-      if (r) {
-        console.clear()
-        printObject(r)
-        if (openMap)
-          window.open(`${googleMaps}${r.lat},${r.lon}`, '_blank').focus()
-        lastUrls = []
-      }
+      if (!r || typeof r !== 'object') return
+      lastUrls.length = 0
+      printLocation(r)
+      if (openMap) openGoogleMaps(r)
     })
   }
 }
@@ -34,55 +48,40 @@ const guess = (openMap) => {
 const pin5k = () => {
   if (lastUrls.length > 0) {
     getLocationObject(lastUrls.pop()).then((r) => {
-      if (r) {
-        if (document.querySelector('#method_provider')) {
-          document.getElementById('method_provider').remove()
-        }
-        const t = Date.now()
-        // create new element
-        let s = document.createElement('script')
-        s.id = `method_provider${t}`
-        s.innerHTML = `const check${t} = () => {
+      if (!r || typeof r !== 'object') return
+      document.getElementById('method_provider')?.remove()
+      let s = document.createElement('script')
+      s.id = 'method_provider'
+
+      const t = Date.now()
+      s.innerHTML = `const pinPoint${t} = () => {
   let mapObj = document.getElementsByClassName('guess-map__canvas-container')[0] 
   if (!mapObj) return
   mapObj[Object.keys(mapObj).find((key) => key.startsWith('__reactFiber$'))].return.memoizedProps.onMarkerLocationChanged({lat:${r.lat},lng:${r.lon}})
 }
-check${t}()
-document.getElementById("method_provider${t}")?.remove()
+pinPoint${t}()
+document.getElementById('method_provider')?.remove()
 `
-        document.body.appendChild(s)
-        lastUrls = []
-      }
+      document.body.appendChild(s)
+      lastUrls.length = 0
+      printLocation(r)
     })
   }
 }
 
-const isBannedAlready = () => {
-  let s = document.getElementById('__NEXT_DATA__')?.innerHTML
-  if (!s) return false
-  return JSON.parse(s)?.props?.middlewareResults[0]?.account?.isBanned
-}
-
-if (isBannedAlready()) {
-  alert('btw your account is already banned')
-  console.log('account banned:', isBannedAlready())
-}
-
-const execute = (e) => {
+document.addEventListener('keyup', (e) => {
   switch (e.keyCode) {
-    case 67:
-      guess(false)
+    case KeyBinds.JustPrintToConsole:
+      guess()
       break
-    case 88:
+    case KeyBinds.PrintAndOpenInGoogleMaps:
       guess(true)
       break
-    case 90:
+    case KeyBinds.PrintAndPinPoint:
       pin5k()
       break
   }
-}
-
-document.addEventListener('keydown', execute)
+})
 
 chrome.runtime.onMessage.addListener((m) => {
   switch (m.message) {
